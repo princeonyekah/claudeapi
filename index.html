@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+  <title>Hiring Buddy</title>
+
+  <script src="https://js.puter.com/v2/"></script>
+
+  <style>
+    body{
+      font-family: Arial, sans-serif;
+      background:#0f172a;
+      color:white;
+      max-width:1000px;
+      margin:40px auto;
+      padding:20px;
+    }
+
+    h1{
+      margin-bottom:20px;
+    }
+
+    textarea{
+      width:100%;
+      min-height:250px;
+      padding:15px;
+      border-radius:10px;
+      border:none;
+      margin-bottom:20px;
+      font-size:14px;
+      background:#1e293b;
+      color:white;
+      resize:vertical;
+    }
+
+    button{
+      background:#38bdf8;
+      color:black;
+      border:none;
+      padding:12px 20px;
+      border-radius:10px;
+      cursor:pointer;
+      font-weight:bold;
+      font-size:15px;
+    }
+
+    button:hover{
+      opacity:0.9;
+    }
+
+    .card{
+      background:#1e293b;
+      padding:20px;
+      border-radius:16px;
+      margin-top:20px;
+    }
+
+    .strong-approve{
+      border-left:6px solid #22c55e;
+    }
+
+    .approve{
+      border-left:6px solid #84cc16;
+    }
+
+    .reject{
+      border-left:6px solid #f97316;
+    }
+
+    .strong-reject{
+      border-left:6px solid #ef4444;
+    }
+
+    .loading{
+      margin-top:20px;
+      opacity:0.7;
+    }
+
+    ul{
+      padding-left:20px;
+    }
+
+    li{
+      margin-bottom:8px;
+    }
+
+    .error{
+      color:#f87171;
+      white-space:pre-wrap;
+    }
+
+    pre{
+      background:#0f172a;
+      padding:15px;
+      border-radius:10px;
+      overflow-x:auto;
+      white-space:pre-wrap;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Hiring Buddy</h1>
+
+  <textarea
+    id="candidateInput"
+    placeholder="Paste LinkedIn profile, resume, or candidate notes here..."
+  ></textarea>
+
+  <button onclick="evaluateCandidate()">
+    Evaluate Candidate
+  </button>
+
+  <div id="output"></div>
+
+<script>
+
+const SYSTEM_PROMPT = `
+You are an elite technical sourcer evaluating candidates for Schemata.
+
+Roles:
+1. Fullstack Engineer
+2. Pipeline Engineer
+3. UX Engineer
+
+Important signals:
+- Strong React / Next.js
+- TypeScript
+- Python
+- FastAPI
+- AWS
+- Production systems
+- Scaled web apps
+- Startup mentality
+- Infrastructure ownership
+- 3D / AR / VR exposure
+- Strong technical depth
+- Ownership mentality
+- Good communication
+- Side projects
+- Low ego
+
+Avoid:
+- Purely academic candidates
+- Weak technical depth
+- Mostly demo/project experience
+- Candidates without ownership
+- Weak frontend/backend fundamentals
+
+Decision must be ONE of:
+- Strong Approve
+- Approve
+- Reject
+- Strong Reject
+
+You MUST return ONLY raw valid JSON.
+
+DO NOT:
+- wrap in markdown
+- use code fences
+- explain anything
+
+Format:
+
+{
+  "candidate_name": "",
+  "role_fit": "",
+  "decision": "",
+  "confidence": "",
+  "strengths": [],
+  "concerns": [],
+  "final_comment": ""
+}
+
+Keep strengths and concerns concise.
+Be opinionated.
+`;
+
+async function evaluateCandidate(){
+
+  const candidateData =
+    document.getElementById("candidateInput").value.trim();
+
+  const output =
+    document.getElementById("output");
+
+  if(!candidateData){
+    output.innerHTML = `
+      <div class="card reject">
+        Please paste candidate information first.
+      </div>
+    `;
+    return;
+  }
+
+  output.innerHTML =
+    '<div class="loading">Evaluating candidate...</div>';
+
+  try {
+
+    const response = await puter.ai.chat(
+      [
+        {
+          role: "system",
+          content: SYSTEM_PROMPT
+        },
+        {
+          role: "user",
+          content: candidateData
+        }
+      ],
+      {
+        model: "claude-sonnet-4-6"
+      }
+    );
+
+    console.log("FULL RESPONSE:", response);
+
+    const text =
+      response.message.content[0].text;
+
+    console.log("RAW TEXT:", text);
+
+    // CLEAN RESPONSE
+    let cleaned = text.trim();
+
+    cleaned = cleaned.replace(/```json/g, '');
+    cleaned = cleaned.replace(/```/g, '');
+
+    const start = cleaned.indexOf('{');
+    const end = cleaned.lastIndexOf('}');
+
+    if(start === -1 || end === -1){
+      throw new Error("No valid JSON found");
+    }
+
+    cleaned =
+      cleaned.substring(start, end + 1);
+
+    console.log("CLEANED JSON:", cleaned);
+
+    const result = JSON.parse(cleaned);
+
+    renderResult(result);
+
+  } catch(err){
+
+    console.error(err);
+
+    output.innerHTML = `
+      <div class="card strong-reject">
+        <h2>Failed to Parse Response</h2>
+
+        <p class="error">
+          ${err.message}
+        </p>
+
+        <p>
+          Open browser console to inspect
+          the raw AI response.
+        </p>
+      </div>
+    `;
+  }
+}
+
+function renderResult(data){
+
+  const output =
+    document.getElementById("output");
+
+  const decisionClass =
+    data.decision
+      .toLowerCase()
+      .replace(/\s/g,'-');
+
+  output.innerHTML = `
+    <div class="card ${decisionClass}">
+
+      <h2>
+        ${data.candidate_name || "Unknown Candidate"}
+      </h2>
+
+      <p>
+        <strong>Role Fit:</strong>
+        ${data.role_fit}
+      </p>
+
+      <p>
+        <strong>Decision:</strong>
+        ${data.decision}
+      </p>
+
+      <p>
+        <strong>Confidence:</strong>
+        ${data.confidence}
+      </p>
+
+      <h3>Strengths</h3>
+
+      <ul>
+        ${
+          (data.strengths || [])
+            .map(
+              item => `<li>${item}</li>`
+            )
+            .join("")
+        }
+      </ul>
+
+      <h3>Concerns</h3>
+
+      <ul>
+        ${
+          (data.concerns || [])
+            .map(
+              item => `<li>${item}</li>`
+            )
+            .join("")
+        }
+      </ul>
+
+      <p>
+        <strong>Final Comment:</strong>
+        ${data.final_comment}
+      </p>
+
+    </div>
+  `;
+}
+
+</script>
+
+</body>
+</html>
