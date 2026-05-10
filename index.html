@@ -3,7 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-
+<a href="/claudechat.html">
+  Open Claude Chat
+</a>
   <title>Hiring Buddy</title>
 
   <script src="https://js.puter.com/v2/"></script>
@@ -24,7 +26,7 @@
 
     textarea{
       width:100%;
-      min-height:250px;
+      min-height:220px;
       padding:15px;
       border-radius:10px;
       border:none;
@@ -43,7 +45,9 @@
       border-radius:10px;
       cursor:pointer;
       font-weight:bold;
-      font-size:15px;
+      font-size:14px;
+      margin-right:10px;
+      margin-bottom:10px;
     }
 
     button:hover{
@@ -86,16 +90,28 @@
       margin-bottom:8px;
     }
 
-    .error{
-      color:#f87171;
-      white-space:pre-wrap;
+    .chat-bubble{
+      background:#1e293b;
+      padding:15px;
+      border-radius:12px;
+      margin-top:12px;
+    }
+
+    .user{
+      border-left:5px solid #38bdf8;
+    }
+
+    .assistant{
+      border-left:5px solid #22c55e;
+    }
+
+    .section-title{
+      margin-top:40px;
+      margin-bottom:10px;
+      font-size:20px;
     }
 
     pre{
-      background:#0f172a;
-      padding:15px;
-      border-radius:10px;
-      overflow-x:auto;
       white-space:pre-wrap;
     }
   </style>
@@ -103,6 +119,8 @@
 <body>
 
   <h1>Hiring Buddy</h1>
+
+  <h2>Candidate Information</h2>
 
   <textarea
     id="candidateInput"
@@ -113,7 +131,31 @@
     Evaluate Candidate
   </button>
 
+  <button onclick="resetConversation()">
+    Reset Conversation
+  </button>
+
   <div id="output"></div>
+
+  <div class="section-title">
+    Continue Conversation
+  </div>
+
+  <textarea
+    id="followupInput"
+    placeholder="Ask follow-up questions like:
+- Be harsher on frontend weaknesses
+- Compare against Pipeline role
+- Would you still approve for a startup?
+- Focus more on ownership signals"
+    style="min-height:120px;"
+  ></textarea>
+
+  <button onclick="continueConversation()">
+    Send Follow-Up
+  </button>
+
+  <div id="conversation" style="display:none;"></div>
 
 <script>
 
@@ -126,28 +168,20 @@ Roles:
 3. UX Engineer
 
 Important signals:
-- Strong React / Next.js
+- React
+- Next.js
 - TypeScript
 - Python
 - FastAPI
 - AWS
-- Production systems
-- Scaled web apps
-- Startup mentality
 - Infrastructure ownership
-- 3D / AR / VR exposure
-- Strong technical depth
+- Scaled applications
+- Strong systems thinking
+- Startup mentality
 - Ownership mentality
-- Good communication
+- 3D / AR / VR exposure
 - Side projects
-- Low ego
-
-Avoid:
-- Purely academic candidates
-- Weak technical depth
-- Mostly demo/project experience
-- Candidates without ownership
-- Weak frontend/backend fundamentals
+- Strong communication
 
 Decision must be ONE of:
 - Strong Approve
@@ -155,12 +189,12 @@ Decision must be ONE of:
 - Reject
 - Strong Reject
 
-You MUST return ONLY raw valid JSON.
+Return ONLY valid JSON.
 
 DO NOT:
-- wrap in markdown
-- use code fences
-- explain anything
+- use markdown
+- wrap in code fences
+- explain outside JSON
 
 Format:
 
@@ -173,10 +207,35 @@ Format:
   "concerns": [],
   "final_comment": ""
 }
-
-Keep strengths and concerns concise.
-Be opinionated.
 `;
+
+let messages = [
+  {
+    role: "system",
+    content: SYSTEM_PROMPT
+  }
+];
+
+function addConversationBubble(role, text){
+
+  const conversation =
+    document.getElementById("conversation");
+
+  const bubble = document.createElement("div");
+
+  bubble.className =
+    `chat-bubble ${role}`;
+
+  bubble.innerHTML = `
+    <strong>
+      ${role === 'user' ? 'You' : 'AI'}
+    </strong>
+
+    <pre>${text}</pre>
+  `;
+
+  conversation.appendChild(bubble);
+}
 
 async function evaluateCandidate(){
 
@@ -187,61 +246,58 @@ async function evaluateCandidate(){
     document.getElementById("output");
 
   if(!candidateData){
+
     output.innerHTML = `
       <div class="card reject">
-        Please paste candidate information first.
+        Please paste candidate information.
       </div>
     `;
+
     return;
   }
 
-  output.innerHTML =
-    '<div class="loading">Evaluating candidate...</div>';
+  output.innerHTML = `
+    <div class="loading">
+      Evaluating candidate...
+    </div>
+  `;
 
   try {
 
+    messages.push({
+      role: "user",
+      content: candidateData
+    });
+
+    addConversationBubble(
+      "user",
+      candidateData
+    );
+
     const response = await puter.ai.chat(
-      [
-        {
-          role: "system",
-          content: SYSTEM_PROMPT
-        },
-        {
-          role: "user",
-          content: candidateData
-        }
-      ],
+      messages,
       {
         model: "claude-sonnet-4-6"
       }
     );
 
-    console.log("FULL RESPONSE:", response);
-
     const text =
       response.message.content[0].text;
 
-    console.log("RAW TEXT:", text);
+    console.log("RAW RESPONSE:", text);
 
-    // CLEAN RESPONSE
-    let cleaned = text.trim();
+    messages.push({
+      role: "assistant",
+      content: text
+    });
 
-    cleaned = cleaned.replace(/```json/g, '');
-    cleaned = cleaned.replace(/```/g, '');
+    addConversationBubble(
+      "assistant",
+      text
+    );
 
-    const start = cleaned.indexOf('{');
-    const end = cleaned.lastIndexOf('}');
-
-    if(start === -1 || end === -1){
-      throw new Error("No valid JSON found");
-    }
-
-    cleaned =
-      cleaned.substring(start, end + 1);
-
-    console.log("CLEANED JSON:", cleaned);
-
-    const result = JSON.parse(cleaned);
+    const result =
+      parseAIResponse(text);
 
     renderResult(result);
 
@@ -251,19 +307,109 @@ async function evaluateCandidate(){
 
     output.innerHTML = `
       <div class="card strong-reject">
-        <h2>Failed to Parse Response</h2>
+        <h2>Error</h2>
 
-        <p class="error">
-          ${err.message}
-        </p>
+        <p>${err.message}</p>
 
         <p>
-          Open browser console to inspect
-          the raw AI response.
+          Open console for debugging.
         </p>
       </div>
     `;
   }
+}
+
+async function continueConversation(){
+
+  const followup =
+    document.getElementById("followupInput").value.trim();
+
+  const output =
+    document.getElementById("output");
+
+  if(!followup){
+    return;
+  }
+
+  output.innerHTML += `
+    <div class="loading">
+      Thinking...
+    </div>
+  `;
+
+  try {
+
+    messages.push({
+      role: "user",
+      content: followup
+    });
+
+    addConversationBubble(
+      "user",
+      followup
+    );
+
+    const response = await puter.ai.chat(
+      messages,
+      {
+        model: "claude-sonnet-4-6"
+      }
+    );
+
+    const text =
+      response.message.content[0].text;
+
+    console.log("FOLLOWUP RESPONSE:", text);
+
+    messages.push({
+      role: "assistant",
+      content: text
+    });
+
+    addConversationBubble(
+      "assistant",
+      text
+    );
+
+    const result =
+      parseAIResponse(text);
+
+    renderResult(result);
+
+  } catch(err){
+
+    console.error(err);
+
+    output.innerHTML += `
+      <div class="card reject">
+        Failed follow-up parse.
+      </div>
+    `;
+  }
+}
+
+function parseAIResponse(text){
+
+  let cleaned = text.trim();
+
+  cleaned = cleaned.replace(/```json/g, '');
+  cleaned = cleaned.replace(/```/g, '');
+
+  const start = cleaned.indexOf('{');
+  const end = cleaned.lastIndexOf('}');
+
+  if(start === -1 || end === -1){
+    throw new Error(
+      "No valid JSON found in AI response"
+    );
+  }
+
+  cleaned =
+    cleaned.substring(start, end + 1);
+
+  console.log("CLEANED:", cleaned);
+
+  return JSON.parse(cleaned);
 }
 
 function renderResult(data){
@@ -274,7 +420,7 @@ function renderResult(data){
   const decisionClass =
     data.decision
       .toLowerCase()
-      .replace(/\s/g,'-');
+      .replace(/\s/g, '-');
 
   output.innerHTML = `
     <div class="card ${decisionClass}">
@@ -329,6 +475,28 @@ function renderResult(data){
 
     </div>
   `;
+}
+
+function resetConversation(){
+
+  messages = [
+    {
+      role: "system",
+      content: SYSTEM_PROMPT
+    }
+  ];
+
+  document.getElementById("conversation")
+    .innerHTML = "";
+
+  document.getElementById("output")
+    .innerHTML = "";
+
+  document.getElementById("candidateInput")
+    .value = "";
+
+  document.getElementById("followupInput")
+    .value = "";
 }
 
 </script>
